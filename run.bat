@@ -1,0 +1,2 @@
+python spectre.py
+pause
