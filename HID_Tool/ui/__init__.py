@@ -1,2 +1,0 @@
-from .MainFrame import MainFrame
-
