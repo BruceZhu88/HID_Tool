@@ -716,9 +716,30 @@ class MainFrame:
                 self.printText("*****Finished all update!**********")
                 self.printText("***********************************")
 
+    def __versionCheck(self, version_DSP, version_FW):
+        for check_time in range(1, 6):
+            sleep(3)
+            #self.__onVersionBtnClick('get_version')
+            self.autoClick('get_version','','print')
+            sleep(0.02)
+            version = self.returnRecieved()
+            if version != '':
+                try:
+                    FW = re.findall(r'FW=(.*),', version)[0]
+                    DSP = re.findall(r'DSP=(.*)', version)[0]
+                except:
+                    self.printText("Cannot connect with device")
+                if (FW == version_FW) and (DSP == version_DSP):
+                    self.printText("Upgrade really succeeded!!")
+                    sleep(2)
+                else:
+                    self.printText("FW="+FW+" version_FW="+version_FW)
+                    self.printText("DSP="+DSP+" version_DSP="+version_DSP)
+                    self.printText("Upgrade failed !!!!! ---- version numbers are not equal!")
+                    self.update = False
+                break
+
     def __autoUpdate(self, firmware_path, version_DSP, version_FW, usbPID):
-        self.version_FW = version_FW
-        self.version_DSP = version_DSP
         dfu_file = firmware_path+'\\firmware.dfu'
         dfu_cmd = firmware_path+'\HidDfuCmd.exe'
         if os.path.isfile(dfu_file) == False or os.path.isfile(dfu_cmd) == False:
@@ -741,24 +762,4 @@ class MainFrame:
             #sys.exit(1)
         if s.wait() != 0:
             self.printText("There were some errors")
-        for check_time in range(1, 6):
-            sleep(3)
-            #self.__onVersionBtnClick('get_version')
-            self.autoClick('get_version','','print')
-            sleep(0.02)
-            version = self.returnRecieved()
-            if version != '':
-                try:
-                    FW = re.findall(r'FW=(.*),', version)[0]
-                    DSP = re.findall(r'DSP=(.*)', version)[0]
-                except:
-                    self.printText("Cannot connect with device")
-                if (FW == self.version_FW) and (DSP == self.version_DSP):
-                    self.printText("Upgrade really succeeded!!")
-                    sleep(2)
-                else:
-                    self.printText(FW)
-                    self.printText(DSP)
-                    self.printText("Upgrade failed !!!!!")
-                    self.update = False
-                break
+        self.__versionCheck(version_DSP, version_FW)
