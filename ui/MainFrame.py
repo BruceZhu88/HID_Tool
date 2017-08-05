@@ -677,10 +677,9 @@ class MainFrame:
         if self.update == True:
             self.time += 1
             if self.time == 1:
-                data_path = './config.ini'
                 conf = configparser.ConfigParser()
                 try:
-                    conf.read(data_path)
+                    conf.read(self.ini_filename)
                     self.usbPID = conf.get("USBPID", "usbPID")
                     self.High_version_FW = conf.get("Firmware", "High_version_FW")
                     self.High_version_DSP = conf.get("Firmware", "High_version_DSP")
