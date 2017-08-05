@@ -1,2 +1,2 @@
-python spectre.py
+python HID.py 
 pause
