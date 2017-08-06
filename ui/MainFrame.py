@@ -47,7 +47,9 @@ class MainFrame:
         
         self.uiStart = 0
         self.button = [0]*13
-                         
+        self.Btn_SaveLog = None
+        self.Btn_Clear = None
+        self.Btn_Send = None
         self.__usbHelper = usbHelper
         self.__curActiveDeviceIndex = -1
 
@@ -60,7 +62,6 @@ class MainFrame:
         self.__listBoxDevice = None
         self.__textLog = None
         self.__autoSaveTimer = None
-        
         
 #        self.__textDeviceInfo1 = StringVar()
 #        self.__textDeviceInfo2 = StringVar()
@@ -235,8 +236,10 @@ class MainFrame:
 
     def __setupLogPane(self, master):
         topPane = Frame(master, bg = self.mainColor)
-        Button(topPane, text='Clear', font=self.controlFont, bg=self.mainColor, fg='white', anchor=W, relief=FLAT, command=self.__onClearBtnClick).pack(side=RIGHT, fill=NONE, expand=NO, padx = 5)
-        Button(topPane, textvariable = self.__textBtnAutoSave, font = self.controlFont, bg = self.mainColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onAutoSaveBtnClick).pack(side = LEFT, fill = X, expand = YES)
+        self.Btn_Clear = Button(topPane, text='Clear', font=self.controlFont, bg=self.mainColor, fg='white', anchor=W, relief=FLAT, command=self.__onClearBtnClick)
+        self.Btn_Clear.pack(side=RIGHT, fill=NONE, expand=NO, padx = 5)
+        self.Btn_SaveLog = Button(topPane, textvariable = self.__textBtnAutoSave, font = self.controlFont, bg = self.mainColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onAutoSaveBtnClick)
+        self.Btn_SaveLog.pack(side = LEFT, fill = X, expand = YES)
 #        Label(topPane, text = '', bg = ui.mainColor, fg = 'white', anchor = W).pack(side = LEFT, fill = X, expand = NO)
         topPane.pack(side=TOP, fill=X, expand=NO)
         self.__textLog = ScrolledText(master, font = self.consoleFont, relief = FLAT, spacing1 = 5, spacing2 = 5)
@@ -245,7 +248,8 @@ class MainFrame:
 #        topPane.pack(side = TOP, fill = X, expand = NO, ipadx = 2)
 
     def __setupCmdPane(self, master):
-        Button(master, text = 'Send', font = self.controlFont, bg = self.mainColor, fg = 'white', relief = FLAT, command = self.__onSendCommand).pack(side = RIGHT, fill = Y, expand = NO, ipadx = 5)
+        self.Btn_Send = Button(master, text = 'Send', font = self.controlFont, bg = self.mainColor, fg = 'white', relief = FLAT, command = self.__onSendCommand)
+        self.Btn_Send.pack(side = RIGHT, fill = Y, expand = NO, ipadx = 5)
         entryCommand = Entry(master, textvariable = self.__textCommand, relief = FLAT)
         entryCommand.bind('<Return>', self.__onSendCommand)
         entryCommand.bind('<Up>', self.__onLastCacheCommand)
@@ -408,8 +412,7 @@ class MainFrame:
         self.__updateDeviceList()
         self.__addLog('Scan: {0} devices found'.format(len(self.__usbHelper.getDevices())), '#')
         #if self.__listBoxDevice.get(0)=='':
-            #for i in range(0,len(self.button)):
-                #self.button[i].configure(state = DISABLED)        
+            #for i in range(0,len(self.button)): #self.button[i].configure(state = DISABLED)        
 
     def __onDevicePnp(self, event):
         self.__addLog('Device ' + event, '#')
@@ -425,7 +428,7 @@ class MainFrame:
             self.usbScan=0 #Design for duf mode 
             #if self.__listBoxDevice.get(0)!='':
                 #for i in range(0,len(self.button)):
-                    #self.button[i].configure(state = ACTIVE)
+                    #self.button[i].configure(state = NORMAL)
 
     def __onLogRecieved(self, log):
         if self.noPrint==True:
@@ -565,8 +568,14 @@ class MainFrame:
     def send_run_thread(self):
         if self.uiStart == 1:
             while True:
-                self.Task_Auto_send() 
-            
+                self.Task_Auto_send()
+                if self.button[10]["state"] == DISABLED:
+                    self.Btn_SaveLog.configure(state = NORMAL)
+                    self.Btn_Clear.configure(state = NORMAL)
+                    self.Btn_Send.configure(state = NORMAL)
+                    for i in range(0,len(self.button)):
+                        self.button[i].configure(state = NORMAL)
+        
         self.thread_send_run = threading.Timer(1, self.send_run_thread) #wait 4s to launch, avoid affect main thread(UI)
         self.thread_send_run.setDaemon(True)
         self.thread_send_run.start()
@@ -674,6 +683,11 @@ class MainFrame:
         '''
         if self.update == True:
             self.times = 0
+            self.Btn_SaveLog.configure(state = DISABLED)
+            self.Btn_Clear.configure(state = DISABLED)
+            self.Btn_Send.configure(state = DISABLED)
+            for i in range(0,len(self.button)):
+                self.button[i].configure(state = DISABLED)
             if os.path.isfile(self.ini_filename) == False:
                 self.printText("Cannot find file config.ini")
                 self.update = False
@@ -695,7 +709,7 @@ class MainFrame:
                 self.update = False                    
                 return
 
-            while(self.times <= self.totalTimes):
+            while(self.times < self.totalTimes):
                 self.times += 1
                 try:
                     if self.High_version_FW == self.Low_version_FW:
@@ -726,48 +740,52 @@ class MainFrame:
             self.printText("***********************************")
 
     def __versionCheck(self, version_DSP, version_FW):
-        for check_time in range(1, 6):
-            sleep(3)
-            #self.__onVersionBtnClick('get_version')
-            self.autoClick('get_version','','print')
-            sleep(0.5)
-            version = self.returnRecieved()
-            sleep(0.3)
-            if version != '':
-                try:
-                    FW = re.findall(r'FW=(.*),', version)[0]
-                    DSP = re.findall(r'DSP=(.*)', version)[0]
-                    if (FW == version_FW) and (DSP == version_DSP):
-                        self.printText("Upgrade really succeeded!!")
-                        sleep(2)
-                    else:
-                        self.printText("FW="+FW+" version_FW="+version_FW)
-                        self.printText("DSP="+DSP+" version_DSP="+version_DSP)
-                        self.printText("Upgrade failed !!!!! ---- version numbers are not equal!")
-                except Exception as e:
-                    self.printText("Cannot connect with device")
-                    self.printText("Error : "+e)
-                    return False
-                return True
-            else:
-                self.printText("Cannot read version!!")
-                self.printText("Update Failed!!!!!")
+        sleep(6)
+        #self.__onVersionBtnClick('get_version')
+        self.autoClick('get_version','','print')
+        sleep(0.8)
+        version = self.returnRecieved()
+        sleep(0.3)
+        if version != '':
+            try:
+                FW = re.findall(r'FW=(.*),', version)[0]
+                DSP = re.findall(r'DSP=(.*)', version)[0]
+                if (FW == version_FW) and (DSP == version_DSP):
+                    self.printText("Upgrade really succeeded!!")
+                    sleep(2)
+                else:
+                    self.printText("FW="+FW+" version_FW="+version_FW)
+                    self.printText("DSP="+DSP+" version_DSP="+version_DSP)
+                    self.printText("Upgrade failed !!!!! ---- version numbers are not equal!")
+            except Exception as e:
+                self.printText("Cannot connect with device")
+                self.printText("Error : "+e)
                 return False
+            return True
+        else:
+            self.printText("Cannot read version!!")
+            self.printText("Update Failed!!!!!")
+            return False
 
     def __autoUpdate(self, firmware_path, version_DSP, version_FW, usbPID):
         dfu_file = firmware_path+'\\firmware.dfu'
         dfu_cmd = firmware_path+'\HidDfuCmd.exe'
         if os.path.isfile(dfu_file) == False or os.path.isfile(dfu_cmd) == False:
             self.printText("Cannot find file %s or %s"%(dfu_file, dfu_cmd))
+            self.printText("Please check your related files or path in config.ini!!!")
             return False
         self.printText("Going to DFU mode ...")        
         self.autoClick('dfu_mode','','noprint')
         sleep(7)
         self.printText("Updating ...")
         cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\input.txt".format(dfu_cmd, self.vendor_id, usbPID, dfu_file)
-        s=subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-        pipe=s.stdout.readlines()
-        sleep(2)  #add this to get enough time
+        try:
+            s=subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+            pipe=s.stdout.readlines()
+        except Exception as e:
+            self.printText("Error : "+e)
+            return False
+        sleep(1.5)  #add this to get enough time
         if "Device reset succeeded\r\n" in  pipe[4].decode('utf-8'):
             self.printText("DFU_Update is finished, going to check version...")
         else:
@@ -775,7 +793,7 @@ class MainFrame:
             return False
             #sys.exit(1)
         if s.wait() != 0:
-            self.printText("There were some errors")
+            self.printText("Error on subprocess!!!")
         if not self.__versionCheck(version_DSP, version_FW):
             return False
         return True
