@@ -35,8 +35,6 @@ class MainFrame:
         self.update = False
         self.times = 0
         self.totalTimes = 0
-        self.version_FW = ''
-        self.version_DSP = ''
         self.High_version_FW = ''
         self.High_version_DSP = ''
         self.High_version_path = ''
