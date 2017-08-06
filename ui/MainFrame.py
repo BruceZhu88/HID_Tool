@@ -33,8 +33,8 @@ class MainFrame:
         self.vendor_id = ''
         self.ini_filename = ''
         self.update = False
-        self.time = 0
-        self.totalTime = 0
+        self.times = 0
+        self.totalTimes = 0
         self.version_FW = ''
         self.version_DSP = ''
         self.High_version_FW = ''
@@ -333,7 +333,7 @@ class MainFrame:
             self.update = False
             self.printText("Your selected file maybe is wrong! Please choose again!!")
         else:
-            self.time = 0
+            self.times = 0
             self.update=True
    
     def __onAutoSaveBtnClick(self):
@@ -675,76 +675,93 @@ class MainFrame:
             self.runTemp=False   
         '''
         if self.update == True:
-            self.time += 1
-            if self.time == 1:
-                conf = configparser.ConfigParser()
-                try:
-                    conf.read(self.ini_filename)
-                    self.usbPID = conf.get("USBPID", "usbPID")
-                    self.High_version_FW = conf.get("Firmware", "High_version_FW")
-                    self.High_version_DSP = conf.get("Firmware", "High_version_DSP")
-                    self.High_version_path = conf.get("Firmware", "High_version_path")
-                    
-                    self.Low_version_FW = conf.get("Firmware", "Low_version_FW")
-                    self.Low_version_DSP = conf.get("Firmware", "Low_version_DSP")
-                    self.Low_version_path = conf.get("Firmware", "Low_version_path")
-                    self.totalTime = conf.getint("Upate_Times", "times")
-                except:
-                    self.printText("Cannot find file config.ini")
-                    self.totalTime = 0
-                    self.time = 0
-                    self.update = False                    
-            
-            if self.time < self.totalTime+1:
+            self.times = 0
+            if os.path.isfile(self.ini_filename) == False:
+                self.printText("Cannot find file config.ini")
+                self.update = False
+                return 
+            conf = configparser.ConfigParser()
+            try:
+                conf.read(self.ini_filename)
+                self.usbPID = conf.get("USBPID", "usbPID")
+                self.High_version_FW = conf.get("Firmware", "High_version_FW")
+                self.High_version_DSP = conf.get("Firmware", "High_version_DSP")
+                self.High_version_path = conf.get("Firmware", "High_version_path")
+                
+                self.Low_version_FW = conf.get("Firmware", "Low_version_FW")
+                self.Low_version_DSP = conf.get("Firmware", "Low_version_DSP")
+                self.Low_version_path = conf.get("Firmware", "Low_version_path")
+                self.totalTimes = conf.getint("Upate_Times", "times")
+            except Exception as e:
+                self.printText("Error when read config.ini : "+e)
+                self.update = False                    
+                return
+
+            while(self.times <= self.totalTimes):
+                self.times += 1
                 try:
                     if self.High_version_FW == self.Low_version_FW:
-                        self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.time))
-                        self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID)
+                        self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.times))
+                        if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID):
+                            self.update = False
+                            return
                     else:
-                        self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.time))
-                        self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID)
-                        self.printText('-----------------------Downgrade to %s --- %s times'%(self.Low_version_FW, self.time))
-                        self.__autoUpdate(self.Low_version_path, self.Low_version_DSP, self.Low_version_FW, self.usbPID)
-                except:
-                    self.printText('Error!')
+                        self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.times))
+                        if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID):
+                            self.update = False
+                            return
+                        self.printText('-----------------------Downgrade to %s --- %s times'%(self.Low_version_FW, self.times))
+                        if not self.__autoUpdate(self.Low_version_path, self.Low_version_DSP, self.Low_version_FW, self.usbPID):
+                            self.update = False
+                            return
+                except Exception as e:
+                    self.printText('Error when update: '+e)
                     self.update = False
-            else:
-                #need add disable other button
-                self.update = False
-                self.printText("***********************************")
-                self.printText("*****Finished all update!**********")
-                self.printText("***********************************")
+                    return
+            
+            #need add disable other button
+            self.totalTimes = 0
+            self.times = 0
+            self.update = False
+            self.printText("***********************************")
+            self.printText("*****Finished all update!**********")
+            self.printText("***********************************")
 
     def __versionCheck(self, version_DSP, version_FW):
         for check_time in range(1, 6):
             sleep(3)
             #self.__onVersionBtnClick('get_version')
             self.autoClick('get_version','','print')
-            sleep(0.02)
+            sleep(0.5)
             version = self.returnRecieved()
+            sleep(0.3)
             if version != '':
                 try:
                     FW = re.findall(r'FW=(.*),', version)[0]
                     DSP = re.findall(r'DSP=(.*)', version)[0]
-                except:
+                    if (FW == version_FW) and (DSP == version_DSP):
+                        self.printText("Upgrade really succeeded!!")
+                        sleep(2)
+                    else:
+                        self.printText("FW="+FW+" version_FW="+version_FW)
+                        self.printText("DSP="+DSP+" version_DSP="+version_DSP)
+                        self.printText("Upgrade failed !!!!! ---- version numbers are not equal!")
+                except Exception as e:
                     self.printText("Cannot connect with device")
-                if (FW == version_FW) and (DSP == version_DSP):
-                    self.printText("Upgrade really succeeded!!")
-                    sleep(2)
-                else:
-                    self.printText("FW="+FW+" version_FW="+version_FW)
-                    self.printText("DSP="+DSP+" version_DSP="+version_DSP)
-                    self.printText("Upgrade failed !!!!! ---- version numbers are not equal!")
-                    self.update = False
-                break
+                    self.printText("Error : "+e)
+                    return False
+                return True
+            else:
+                self.printText("Cannot read version!!")
+                self.printText("Update Failed!!!!!")
+                return False
 
     def __autoUpdate(self, firmware_path, version_DSP, version_FW, usbPID):
         dfu_file = firmware_path+'\\firmware.dfu'
         dfu_cmd = firmware_path+'\HidDfuCmd.exe'
         if os.path.isfile(dfu_file) == False or os.path.isfile(dfu_cmd) == False:
             self.printText("Cannot find file %s or %s"%(dfu_file, dfu_cmd))
-            self.update = False
-            return
+            return False
         self.printText("Going to DFU mode ...")        
         self.autoClick('dfu_mode','','noprint')
         sleep(7)
@@ -757,8 +774,10 @@ class MainFrame:
             self.printText("DFU_Update is finished, going to check version...")
         else:
             self.printText("Failed to upgrade!Going to exit...")
-            return
+            return False
             #sys.exit(1)
         if s.wait() != 0:
             self.printText("There were some errors")
-        self.__versionCheck(version_DSP, version_FW)
+        if not self.__versionCheck(version_DSP, version_FW):
+            return False
+        return True
