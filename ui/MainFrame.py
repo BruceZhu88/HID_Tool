@@ -350,7 +350,10 @@ class MainFrame:
                                                     initialfile = 'log' + strftime('%Y%m%d-%H%M%S ', localtime(time())))
             if self.__autoSavePath is not None and self.__autoSavePath != '':
                 self.__autoSave = True
-                self.__saveLog()
+                if self.__saveLog():
+                    self.printText("Log file is OK!")
+                else:
+                    self.printText("Maybe you need to restart HID Tool!!!")
                 self.__settings.set('log_path', os.path.dirname(self.__autoSavePath))
 
         self.__updateAutoSave()
@@ -545,25 +548,32 @@ class MainFrame:
             self.__tk.after_cancel(self.__autoSaveTimer)
 
         if not self.__autoSave:
-            return
+            return False
 
         self.__autoSaveTimer = self.__tk.after(5000, lambda: self.__saveLog())
 
         if self.__lastSavedLogIdx >= self.__lastLogIdx \
                 or self.__autoSavePath is None \
                 or self.__autoSavePath == '':
-            return
+            return False
 
         file = open(self.__autoSavePath, 'a')
         firstTag = 'log{0}'.format(self.__lastSavedLogIdx)
         firstTagIndex = self.__textLog.tag_ranges(firstTag)
         lastTag = 'log{0}'.format(self.__lastLogIdx - 1)
         lastTagIndex = self.__textLog.tag_ranges(lastTag)
-        content = self.__textLog.get(firstTagIndex[0], lastTagIndex[1])
-        file.write(content)
+        try:
+            content = self.__textLog.get(firstTagIndex[0], lastTagIndex[1])
+            file.write(content)
+        except Exception as e:
+            print(e)
+            self.printText("Cannot save your log file! Please try again!!!")
+            file.close()
+            self.__lastSavedLogIdx = self.__lastLogIdx
+            return False
         file.close()
-
         self.__lastSavedLogIdx = self.__lastLogIdx
+        return True
 
     def send_run_thread(self):
         if self.uiStart == 1:
