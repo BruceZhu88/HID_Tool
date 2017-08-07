@@ -15,9 +15,9 @@ executables = [
     Executable('HID.py', base=base)
 ]
 
-setup(name='spectre',
-      version='1.3',
-      description='Tymphany BT_Platform HID Tools',
+setup(name='HID_Tool',
+      version='1.5.2',
+      description='Tymphany SQA BT_Platform HID Tools',
       options = {"build_exe": build_exe_options},
       executables=executables
       )
