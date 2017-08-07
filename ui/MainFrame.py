@@ -579,12 +579,14 @@ class MainFrame:
         if self.uiStart == 1:
             while True:
                 self.Task_Auto_send()
+                """
                 if self.button[10]["state"] == DISABLED:
                     self.Btn_SaveLog.configure(state = NORMAL)
                     self.Btn_Clear.configure(state = NORMAL)
                     self.Btn_Send.configure(state = NORMAL)
                     for i in range(0,len(self.button)):
                         self.button[i].configure(state = NORMAL)
+                """
         
         self.thread_send_run = threading.Timer(1, self.send_run_thread) #wait 4s to launch, avoid affect main thread(UI)
         self.thread_send_run.setDaemon(True)
@@ -693,11 +695,13 @@ class MainFrame:
         '''
         if self.update == True:
             self.times = 0
+            """
             self.Btn_SaveLog.configure(state = DISABLED)
             self.Btn_Clear.configure(state = DISABLED)
             self.Btn_Send.configure(state = DISABLED)
             for i in range(0,len(self.button)):
                 self.button[i].configure(state = DISABLED)
+            """
             if os.path.isfile(self.ini_filename) == False:
                 self.printText("Cannot find file config.ini")
                 self.update = False
