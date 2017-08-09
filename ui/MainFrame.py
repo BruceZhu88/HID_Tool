@@ -732,12 +732,12 @@ class MainFrame:
                             self.update = False
                             return
                     else:
-                        self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.times))
-                        if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID):
-                            self.update = False
-                            return
                         self.printText('-----------------------Downgrade to %s --- %s times'%(self.Low_version_FW, self.times))
                         if not self.__autoUpdate(self.Low_version_path, self.Low_version_DSP, self.Low_version_FW, self.usbPID):
+                            self.update = False
+                            return                        
+                        self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.times))
+                        if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID):
                             self.update = False
                             return
                 except Exception as e:
