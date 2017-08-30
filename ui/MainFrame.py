@@ -1,50 +1,70 @@
 from time import *
 
+from tkinter import messagebox
 from tkinter.filedialog import *
 from tkinter.font import *
 from tkinter.scrolledtext import *
 
 from .Settings import Settings
+from .checkUpdates import checkUpdates
 import threading
+import _thread
+import logging
+import os
 import subprocess
 import configparser
+
+maxLogFiles = 150
+logPath = '.\\log'
+if not os.path.exists(logPath):
+    os.mkdir(logPath)
+currentTime = strftime("%Y%m%d%H%M")
+logfilename = '{0}/{1}.log'.format(logPath, currentTime)
+logging.basicConfig(filename=logfilename,
+            format='%(asctime)s -%(name)s-%(levelname)s-%(module)s:%(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S %p',
+            level=logging.DEBUG)
+
+conf = configparser.ConfigParser()
+try:
+    conf.read('./ui/version.ini')
+    appVerson = conf.get("version", "app")
+except Exception as e:
+    logging.log(logging.DEBUG, 'Error: {0}'.format(e))
+    sys.exit()
 
 class MainFrame:
     def __init__(self,usbHelper):
 
         self.__tk = Tk()
-        self.title = 'HID v1.5.2 SQA'
+        self.title = 'HID v{0} SQA'.format(appVerson)
         self.__settings = Settings('.\settings.joson')
-        
+
         self.mainColor = '#1979ca'
         self.buttonColor = 'deep sky blue'
         self.buttonState = ACTIVE
         self.controlFont = Font(family = 'Consolas', size = 10)
         self.consoleFont = Font(family = 'Consolas', size = 10)
-        
+
         self.getlog = 'init'
         self.COMMAND = ''
-        self.checkall = False
-        self.changesn = False
-        self.dfumode = False
-        self.psTool = False
         self.noPrint = False
         self.runTemp = False
         self.vendor_id = ''
-        self.ini_filename = ''
+        self.ini_filename = '.\\HID_config.ini'
         self.update = False
         self.times = 0
         self.totalTimes = 0
         self.High_version_FW = ''
         self.High_version_DSP = ''
         self.High_version_path = ''
-        
+
         self.Low_version_FW = ''
         self.Low_version_DSP = ''
         self.Low_version_path = ''
         self.usbScan = 1  ##Design for dfu mode(On this mode, still can scan device) or pstool mode, represent disconnect, just find one device.
         self.textSN = StringVar()
-        
+
         self.uiStart = 0
         self.button = [0]*13
         self.Btn_SaveLog = None
@@ -62,7 +82,7 @@ class MainFrame:
         self.__listBoxDevice = None
         self.__textLog = None
         self.__autoSaveTimer = None
-        
+
 #        self.__textDeviceInfo1 = StringVar()
 #        self.__textDeviceInfo2 = StringVar()
 #        self.__textDeviceInfo3 = StringVar()
@@ -78,9 +98,13 @@ class MainFrame:
         self.__usbHelper.registerActiveDeviceChangeHandler(lambda : self.__onActiveDeviceChange())
         self.__usbHelper.registerReportRecievedHandler(lambda log: self.__onLogRecieved(log))
         self.__usbHelper.registerPnpHandler(self.__tk.winfo_id(), lambda event: self.__onDevicePnp(event))
-        
-        self.send_run_thread()
+
         self.__settings.loadSettings()
+
+        self.thread_clearLog = threading.Timer(4, self.clearLog) #wait 4s to launch, avoid affect main thread(UI)
+        self.thread_clearLog.setDaemon(True)
+        self.thread_clearLog.start()
+        #self.clearLogThread()
 
     def mainLoop(self):
         self.__setupContent()
@@ -91,6 +115,7 @@ class MainFrame:
         self.__settings.saveSettings()
 
     def printText(self,text):
+        logging.log(logging.INFO, text)
         self.__addLog(text, '->')
 
     def autoClick(self,command,str,noprint):
@@ -104,12 +129,12 @@ class MainFrame:
             #self.__addLog(command, '>')
         else:
             self.__addLog('Error: ' + ret, '#')
-            self.__onRefreshBtnClick()    
+            self.__onRefreshBtnClick()
         self.COMMAND = str
 
     def returnRecieved(self):
         return self.getlog
-    
+
     def __setupRoot(self):
         # setup root
         self.__tk.title(self.title)
@@ -126,9 +151,11 @@ class MainFrame:
         self.__tk.geometry(size)
         self.__tk.attributes('-topmost', 1)
         #self.__tk.iconbitmap("%s\\it_medieval_blueftp_amain_48px.ico"%os.getcwd())
-        self.__tk.iconbitmap(".\it_medieval_blueftp_amain_48px.ico")
-            
+        self.__tk.iconbitmap(".\\ui\\icon\\it_medieval_blueftp_amain_48px.ico")
+
     def __setupContent(self):
+        self.menu_bar = Frame(self.__tk, relief=RAISED, borderwidth=2)
+        self.menu_bar.pack(side = TOP, fill = X, expand = NO)
         leftPaneBorder = Frame(self.__tk, bg = self.mainColor)
         leftPane = Frame(leftPaneBorder, bg = 'white')
         leftPane.pack(fill = BOTH, expand = YES, padx = 1, pady = 1)
@@ -137,13 +164,107 @@ class MainFrame:
         rightPane = Frame(self.__tk, bg = 'white')
         self.__setupRightPane(rightPane)
 
-        Frame(self.__tk, height = 10, bg ='white').pack(side = TOP, fill = X, expand = NO)
-        Frame(self.__tk, height = 10, bg ='white').pack(side = BOTTOM, fill = X, expand = NO)
-        Frame(self.__tk, width = 10, bg ='white').pack(side = LEFT, fill = X, expand = NO)
+        Frame(self.__tk, height = 1, bg ='white').pack(side = TOP, fill = X, expand = NO)
+        Frame(self.__tk, height = 1, bg ='white').pack(side = BOTTOM, fill = X, expand = NO)
+        Frame(self.__tk, width = 1, bg ='white').pack(side = LEFT, fill = X, expand = NO)
         leftPaneBorder.pack(side = LEFT, fill = Y)
-        Frame(self.__tk, width = 5, bg ='white').pack(side = LEFT, fill = X, expand = NO)
-        Frame(self.__tk, width = 10, bg ='white').pack(side = RIGHT, fill = X, expand = NO)
+        Frame(self.__tk, width = 1, bg ='white').pack(side = LEFT, fill = X, expand = NO)
+        Frame(self.__tk, width = 1, bg ='white').pack(side = RIGHT, fill = X, expand = NO)
         rightPane.pack(side = RIGHT, fill = BOTH, expand = YES)
+
+        help_menu = self.create_help_menu()
+        #about_menu = self.create_about_menu()
+        tools_menu = self.create_tools_menu()
+        self.menu_bar.tk_menuBar(help_menu, tools_menu)
+
+    def create_help_menu(self):
+        HELP_MENU_ITEMS = ['Undo', 'How to use', 'About']
+        help_item = Menubutton(self.menu_bar, text='Help', underline=1)
+        help_item.pack(side=LEFT, padx='1m')
+        help_item.menu = Menu(help_item)
+
+        help_item.menu.add('command', label=HELP_MENU_ITEMS[0])
+        help_item.menu.entryconfig(1, state=DISABLED)
+
+        help_item.menu.add_command(label=HELP_MENU_ITEMS[1])
+        help_item.menu.add_command(label=HELP_MENU_ITEMS[2], command=self.about)
+        help_item['menu'] = help_item.menu
+        return help_item
+
+    def create_tools_menu(self):
+        TOOLS_MENU_ITEMS = ['Check for Updates']
+        tools_item = Menubutton(self.menu_bar, text='Tools', underline=1)
+        tools_item.pack(side=LEFT, padx='1m')
+        tools_item.menu = Menu(tools_item)
+        tools_item.menu.add_command(label=TOOLS_MENU_ITEMS[0], command=self.checkForUpdates)
+        tools_item['menu'] = tools_item.menu
+        return tools_item
+
+    def about(self):
+        messagebox.showinfo('About', 'Versoin: {0}\nAuthor: Bruce Zhu\nEmail:  bruce.zhu@tymphany.com'.format(appVerson))
+
+    def checkForUpdates(self):
+        conf = configparser.ConfigParser()
+        try:
+            conf.read('.\\ui\\version.ini')
+            currentVer = conf.get("version", "app")
+        except Exception as e:
+            logging.log(logging.DEBUG, 'Error: {0}'.format(e))
+            return
+        if not os.path.exists('.\\download'):
+            os.makedirs('.\\download')
+        dest_dir = '.\\download\\downVer.ini'
+        checkupdates = checkUpdates()
+        if not checkupdates.downLoadFromURL('http://sw.tymphany.com/fwupdate/sqa/tool/HID/version.ini', dest_dir):
+            messagebox.showinfo('Tips', 'Cannot communicate with new version server!\nPlease check your network!')
+            return
+        downVer = checkupdates.getVer(dest_dir)
+        logging.log(logging.DEBUG, 'Starting compare version')
+        if checkupdates.compareVer(downVer, currentVer):
+            ask = messagebox.askokcancel('Tips', 'New version %s is detected !\n Do you want to update now?'%downVer)
+            if ask:
+                self.downloadThread(downVer)
+                logging.log(logging.DEBUG, 'Starting download')
+        else:
+            messagebox.showinfo('Tips', 'No new version!')
+
+    def downloadThread(self, downVer):
+        try:
+            _thread.start_new_thread(self.downloadZip, (downVer,) )
+        except:
+            logging.log(logging.DEBUG, 'Cannot start power cycle thread!!!')
+
+    def downloadZip(self, downVer):
+        newVerPath = '.\\download\\HID.zip'
+        installFile = '.\\download\\install.bat'
+        checkupdates = checkUpdates()
+        if not checkupdates.downLoadFromURL('http://sw.tymphany.com/fwupdate/sqa/tool/HID/HID_Tool_v{0}.zip'.format(downVer), newVerPath):
+            messagebox.showinfo('Tips', 'Cannot communicate with new version server!\nPlease check your network!')
+            return
+        if not checkupdates.downLoadFromURL('http://sw.tymphany.com/fwupdate/sqa/tool/HID/install.bat', installFile):
+            messagebox.showinfo('Tips', 'Cannot communicate with new version server!\nPlease check your network!')
+            return
+        #download process
+        checkupdates.unzip_dir(newVerPath, '.\\download\\HID')
+        ask = messagebox.askokcancel('Tips', 'Do you want to install this new version?')
+        if ask:
+            logging.log(logging.DEBUG, "Starting install")
+            self.installThread()
+            logging.log(logging.DEBUG, "Close UI")
+            self.__tk.destroy()
+            logging.log(logging.DEBUG, "System exit")
+            sys.exit()
+
+    def installThread(self):
+        batPath = r'"%s\\download\\install.bat"'%os.getcwd() #Note: path must be '"D:\Program Files"' to avoid include space in path
+        logging.log(logging.DEBUG, "Run %s"%batPath)
+        try:
+            _thread.start_new_thread(self.execBat, (batPath,) )
+        except Exception as e:
+           logging.log(logging.DEBUG, 'Error when install: {0}'.format(e))
+
+    def execBat(self, path):
+        os.system(path)
 
     def __setupLeftPane(self, master):
 #        topPane = Frame(master, bg = ui.mainColor)
@@ -158,51 +279,51 @@ class MainFrame:
         self.__listBoxDevice.bind('<<ListboxSelect>>', self.__onDeviceSelect)
 #        topPane.pack(side = TOP, fill = X, expand = NO, ipadx = 2)
         self.__listBoxDevice.pack(side = TOP, fill = BOTH, expand = YES, pady = 5, padx = 2)
-        
-        Label(master,text= 'HID Command:',font=("Helvetica", 25),fg="blue", anchor = W).pack(side = TOP, fill = X, expand = NO)
+
+        Label(master,text= 'HID Command:',font=("Helvetica", 20),fg="blue", anchor = W).pack(side = TOP, fill = X, expand = NO)
         self.button[0] = Button(master, text = 'Check All', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onCheckallBtnClick)
         #self.button[0].configure(state = self.buttonState)
         self.button[0].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[1]=Button(master, text= 'Device name', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onDevicenameBtnClick)
         #self.button[1].configure(state = self.buttonState)
         self.button[1].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[2]=Button(master, text= 'version', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onVersionBtnClick)
         #self.button[2].configure(state = self.buttonState)
         self.button[2].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[3]=Button(master, text= 'MAC address', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onMacaddressBtnClick)
         #self.button[3].configure(state = self.buttonState)
         self.button[3].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[4]=Button(master, text= 'Serial Number', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onSerialnumberBtnClick)
         #self.button[4].configure(state = self.buttonState)
         self.button[4].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[5]=Button(master, text= 'Battery', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onBatteryBtnClick)
         #self.button[5].configure(state = self.buttonState)
         self.button[5].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[6]=Button(master, text= 'Temperature', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onTemperatureBtnClick)
         #self.button[6].configure(state = self.buttonState)
         self.button[6].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[7]=Button(master, text= 'power button', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onPowerBtnClick)
         #self.button[7].configure(state = self.buttonState)
         self.button[7].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[8]=Button(master, text= 'DFU', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onDFUBtnClick)
         #self.button[8].configure(state = self.buttonState)
         self.button[8].pack(side = TOP, fill = X, expand = NO)
-        
+
         self.button[9]=Button(master, text= 'PsTool Enable', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onPsToolBtnClick)
         #self.button[9].configure(state = self.buttonState)
         self.button[9].pack(side = TOP, fill = X, expand = NO)
 
         self.button[10]=Button(master, text= 'Auto Update', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onAutoUpdateBtnClick)
         self.button[10].pack(side = TOP, fill = X, expand = NO)
-  
+
         self.button[11]=Button(master, text= 'Change Serial Number', font = self.controlFont, bg = self.buttonColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onChangeSNBtnClick)
         #self.button[11].configure(state = self.buttonState)
         self.button[11].pack(side = TOP, fill = X, expand = NO)
@@ -210,12 +331,12 @@ class MainFrame:
         #self.__textSN.pack(side = BOTTOM, fill = X)
         Label(master, text= 'Input:', fg="blue", anchor = W ).pack(side = LEFT, expand = NO)
         tkinter.Entry(master, textvariable=self.textSN).pack(side=LEFT, fill = X, expand = NO)
-        
+
         self.button[12]=Button(master, text= 'Change', font = self.controlFont, bg = self.mainColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onChangeSNBtnClick)
         #self.button[12].configure(state = self.buttonState)
-        self.button[12].pack(side = RIGHT, fill = X, expand = NO)        
+        self.button[12].pack(side = RIGHT, fill = X, expand = NO)
         #Label(master,text= 'Auto Run:',font=("Helvetica", 25),fg="blue", anchor = W).pack(side = TOP, fill = X, expand = NO)
-        
+
         #Button(master, text = 'Battery', font = self.controlFont, bg = self.mainColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onRunbattBtnClick).pack(side = TOP, fill = X, expand = NO)
         #Button(master, text = 'Temperature', font = self.controlFont, bg = self.mainColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onRuntempBtnClick).pack(side = TOP, fill = X, expand = NO)
 
@@ -239,7 +360,7 @@ class MainFrame:
         self.Btn_Clear = Button(topPane, text='Clear', font=self.controlFont, bg=self.mainColor, fg='white', anchor=W, relief=FLAT, command=self.__onClearBtnClick)
         self.Btn_Clear.pack(side=RIGHT, fill=NONE, expand=NO, padx = 5)
         self.Btn_SaveLog = Button(topPane, textvariable = self.__textBtnAutoSave, font = self.controlFont, bg = self.mainColor, fg = 'white', anchor = W, relief = FLAT, command = self.__onAutoSaveBtnClick)
-        self.Btn_SaveLog.pack(side = LEFT, fill = X, expand = YES)
+        #self.Btn_SaveLog.pack(side = LEFT, fill = X, expand = YES)
 #        Label(topPane, text = '', bg = ui.mainColor, fg = 'white', anchor = W).pack(side = LEFT, fill = X, expand = NO)
         topPane.pack(side=TOP, fill=X, expand=NO)
         self.__textLog = ScrolledText(master, font = self.consoleFont, relief = FLAT, spacing1 = 5, spacing2 = 5)
@@ -256,88 +377,126 @@ class MainFrame:
         entryCommand.bind('<Down>', self.__onNextCacheCommand)
         entryCommand.pack(fill = BOTH, expand = YES)
 
+    #************************************************************************************************************
+    def walkFolders(self, folder):
+        folderscount=0
+        filescount=0
+        size=0
+        #walk(top,topdown=True,onerror=None)
+        for root,dirs,files in os.walk(folder):
+            folderscount+=len(dirs)
+            filescount+=len(files)
+            size+=sum([os.path.getsize(os.path.join(root,name)) for name in files])
+        return folderscount,filescount,size
+
+    def clearLogThread(self):
+        try:
+            _thread.start_new_thread(self.clearLog, () )
+        except:
+           logging.log(logging.DEBUG, "Cannot start clearLog thread!!!")
+
+    def clearLog(self):
+        if os.path.exists(logPath):
+            folderscount,filescount,size = self.walkFolders(logPath)
+            if filescount > maxLogFiles:
+                ask = messagebox.askokcancel('Tips', 'Your log files have been exceeded {0}!\nDo you want to clear?'.format(maxLogFiles))
+                if ask:
+                    for parent,dirnames,filenames in os.walk(logPath):
+                        for filename in filenames:
+                            if filename not in logfilename:
+                                try:
+                                    delFilePath = os.path.join(parent,filename)
+                                    os.remove(delFilePath)
+                                except Exception as e:
+                                    logging.log(logging.DEBUG, "Delete file {0} failed: {1}".format(delFilePath, e))
+        else:
+            logging.log(logging.DEBUG, "Object directory {0} does not exist!!".format(logPath))
+    #************************************************************************************************************
+
     def __onRefreshBtnClick(self):
         self.__usbHelper.scan()
-     
-    #---------------------------------------------------    
+
+    #---------------------------------------------------
     def __sendCommand(self,command):
         if self.__usbHelper.getActiveDevice() is None:
             return
         if self.usbScan!=0:
-            return            
+            return
         ret = self.__usbHelper.sendReport(command)
         if ret is None:
             self.__addLog(command, '>')
 
     def __onVersionBtnClick(self):
         self.__sendCommand('get_version')
-        
+
     def __onPowerBtnClick(self):
         self.__sendCommand('power_button_press')
-        
+
     def __onBatteryBtnClick(self):
         self.__sendCommand('get_batt_cap')
-        
+
     def __onTemperatureBtnClick(self):
         self.__sendCommand('get_batt_temp')
-        
+
     def __onMacaddressBtnClick(self):
-        self.__sendCommand('get_bt_mac')  
-              
+        self.__sendCommand('get_bt_mac')
+
     def __onDevicenameBtnClick(self):
         self.__sendCommand('get_dev_name')
-        
+
     def __onSerialnumberBtnClick(self):
-        self.__sendCommand('get_ser_no')        
+        self.__sendCommand('get_ser_no')
 
     def __onDFUBtnClick(self):
         if self.__usbHelper.getActiveDevice() is None:
             return
         if self.usbScan!=0:
-            return          
-        self.dfumode=True
-        
+            return
+        self.dfuModeThread()
+
     def __onChangeSNBtnClick(self):
         if self.__usbHelper.getActiveDevice() is None:
-            return     
+            return
         if self.usbScan!=0:
-            return                 
-        self.changesn=True
-        
+            return
+        self.changeSNThread()
+
     def __onCheckallBtnClick(self):
         if self.__usbHelper.getActiveDevice() is None:
             return
         if self.usbScan!=0:
-            return            
-        self.checkall=True
+            return
+        self.checkAllThread()
 
     def __onPsToolBtnClick(self):
         if self.__usbHelper.getActiveDevice() is None:
             return
         if self.usbScan!=0:
-            return            
-        self.psTool=True
+            return
+        self.psToolThread()
 
     def __onRuntempBtnClick(self):
         if self.__usbHelper.getActiveDevice() is None:
-            return         
+            return
         if self.usbScan!=0:
-            return         
+            return
         self.runTemp=True
 
     def __onAutoUpdateBtnClick(self):
         if self.__usbHelper.getActiveDevice() is None:
-            return     
+            return
         if self.usbScan!=0:
-            return 
-        self.ini_filename = askopenfilename(initialdir = 'C:/', title = "Choose config.ini",filetypes = [("ini files","*.ini")])
-        if "config.ini" not in self.ini_filename:
-            self.update = False
-            self.printText("Your selected file maybe is wrong! Please choose again!!")
-        else:
-            self.times = 0
-            self.update=True
-   
+            return
+        #self.ini_filename = askopenfilename(initialdir = 'C:/', title = "Choose config.ini",filetypes = [("ini files","*.ini")])
+        if os.path.isfile(self.ini_filename) == False:
+            self.printText("Cannot find configure file HID_config.ini")
+            return
+        self.times = 0
+        self.update=True
+        ask = messagebox.askokcancel('Auto Update', 'Are you ready to run this?')
+        if ask:
+            self.autoUpdateThread()
+
     def __onAutoSaveBtnClick(self):
         if self.__autoSave:
             self.__saveLog()
@@ -411,11 +570,11 @@ class MainFrame:
             self.__textCommand.set(self.__cacheCommand[self.__cachePos])
 
     def __onDeviceListChange(self):
-        self.usbScan+=1 #Design for duf mode 
+        self.usbScan+=1 #Design for duf mode
         self.__updateDeviceList()
         self.__addLog('Scan: {0} devices found'.format(len(self.__usbHelper.getDevices())), '#')
         #if self.__listBoxDevice.get(0)=='':
-            #for i in range(0,len(self.button)): #self.button[i].configure(state = DISABLED)        
+            #for i in range(0,len(self.button)): #self.button[i].configure(state = DISABLED)
 
     def __onDevicePnp(self, event):
         self.__addLog('Device ' + event, '#')
@@ -428,7 +587,7 @@ class MainFrame:
             self.__addLog('Connect to device: {0} [{1:04x}], {2} [{3:04x}]\n'
                           .format(device.product_name, device.product_id, device.vendor_name, device.vendor_id), '#')
             self.vendor_id = "0x"+'{0:04x}'.format(device.vendor_id)
-            self.usbScan=0 #Design for duf mode 
+            self.usbScan=0 #Design for duf mode
             #if self.__listBoxDevice.get(0)!='':
                 #for i in range(0,len(self.button)):
                     #self.button[i].configure(state = NORMAL)
@@ -456,7 +615,7 @@ class MainFrame:
         #Bruce change it
         try:
             self.__textLog.delete(firstTageIndex[0], lastTageIndex[1])
-    
+
             while self.__lastLogIdx > self.__firstLogIdx:
                 self.__textLog.tag_delete(firstTage)
                 self.__firstLogIdx = self.__firstLogIdx + 1
@@ -512,12 +671,12 @@ class MainFrame:
             self.__textBtnAutoSave.set('Auto save off')
 
     def __addLog(self, log, tag):
-        if len(log) != 0:#avoid value is empty 
+        if len(log) != 0:#avoid value is empty
             if log[-1] != '\n':
                 log = log + '\n'
         else:
             log = 'None\n'
-        
+
         timeStr = strftime('%H:%M:%S ', localtime(time()))
 
         self.__textLog.configure(state = NORMAL)
@@ -574,125 +733,171 @@ class MainFrame:
         file.close()
         self.__lastSavedLogIdx = self.__lastLogIdx
         return True
-
+    """
     def send_run_thread(self):
         if self.uiStart == 1:
             while True:
                 self.Task_Auto_send()
-                """
+
                 if self.button[10]["state"] == DISABLED:
                     self.Btn_SaveLog.configure(state = NORMAL)
                     self.Btn_Clear.configure(state = NORMAL)
                     self.Btn_Send.configure(state = NORMAL)
                     for i in range(0,len(self.button)):
                         self.button[i].configure(state = NORMAL)
-                """
-        
+
+
         self.thread_send_run = threading.Timer(1, self.send_run_thread) #wait 4s to launch, avoid affect main thread(UI)
         self.thread_send_run.setDaemon(True)
         self.thread_send_run.start()
+    """
+    def checkAllThread(self):
+        try:
+            _thread.start_new_thread(self.__checkAll, () )
+        except Exception as e:
+           logging.log(logging.DEBUG, 'Error when start thread __checkAll: {0}'.format(e))
 
-    def Task_Auto_send(self):
-        sleep(0.2)
-        if self.checkall==True:
-            self.printText('--------------------------------------------')
-            self.autoClick("get_dev_name","Device: ",'print')
-            sleep(0.02)
-            self.autoClick("get_mode","State: ",'print')
-            sleep(0.02)                
-            self.autoClick("get_version","Firmware: ",'print')
-            sleep(0.02)
-            self.autoClick("get_batt_cap","Battery: ",'print')
-            sleep(0.02)
-            self.autoClick("get_batt_temp","Temperature: ",'print')
-            sleep(0.02)
-            self.autoClick("get_bt_mac","MAC address: ",'print')
-            sleep(0.02)
-            self.autoClick("get_ser_no","Serial number: ",'print')   
-            sleep(0.02)
-            self.printText('--------------------------------------------')         
-            self.checkall=False
-        
-        if self.dfumode==True:
-            if self.vendor_id == "0xabcd":
-                self.autoClick('dfu_mode','','print')
-                self.printText("dfu_mode command has been sent!")
-            elif self.vendor_id == "0x0cd4":  
-                self.autoClick('get_mode','','noprint')
-                sleep(0.02)
-                get_mode=self.returnRecieved()
-                if get_mode == 'ON':
-                    self.printText('Your sample is on state, so shutting down...')
-                    self.__onPowerBtnClick()
-                    #self.autoClick('power_button_press','','noprint')
-                    sleep(7)
-                self.printText('dfu_mode command has been sent!') 
-                self.printText('Please check your sample state!') 
-                sleep(1)
-                self.autoClick('dfu_mode','','noprint')    
-                self.printText('Your sample should be in DFU mode!')             
-            else:
-                self.printText('Cannot identify your device!!')
-            self.dfumode = False
-        
-        if self.psTool == True:
+    def __checkAll(self):
+        self.printText('--------------------------------------------')
+        self.autoClick("get_dev_name","Device: ",'print')
+        sleep(0.02)
+        self.autoClick("get_mode","State: ",'print')
+        sleep(0.02)
+        self.autoClick("get_version","Firmware: ",'print')
+        sleep(0.02)
+        self.autoClick("get_batt_cap","Battery: ",'print')
+        sleep(0.02)
+        self.autoClick("get_batt_temp","Temperature: ",'print')
+        sleep(0.02)
+        self.autoClick("get_bt_mac","MAC address: ",'print')
+        sleep(0.02)
+        self.autoClick("get_ser_no","Serial number: ",'print')
+        sleep(0.02)
+        self.printText('--------------------------------------------')
+
+    def dfuModeThread(self):
+        try:
+            _thread.start_new_thread(self.__dfuMode, () )
+        except Exception as e:
+           logging.log(logging.DEBUG, 'Error when start thread __dfuMode: {0}'.format(e))
+
+    def __dfuMode(self):
+        if self.vendor_id == "0xabcd":
+            self.autoClick('dfu_mode','','print')
+            self.printText("dfu_mode command has been sent!")
+        elif self.vendor_id == "0x0cd4":
             self.autoClick('get_mode','','noprint')
             sleep(0.02)
-            get_mode = self.returnRecieved()
+            get_mode=self.returnRecieved()
             if get_mode == 'ON':
-                self.printText('Your sample is on state, so shutting down...') 
-                self.autoClick('power_button_press','','noprint')
+                self.printText('Your sample is on state, so shutting down...')
+                self.__onPowerBtnClick()
+                #self.autoClick('power_button_press','','noprint')
                 sleep(7)
-            self.printText('pstool_enable command has been sent!') 
-            self.printText('Please check your sample state!') 
+            self.printText('dfu_mode command has been sent!')
+            self.printText('Please check your sample state!')
             sleep(1)
-            self.autoClick('pstool_enable','','noprint')  
-            self.printText('Your sample should be in pstool mode!')             
-            self.psTool=False                
-            
-        if self.changesn==True:
-            if self.textSN.get()=='':
-                self.printText('Please input serial number!')
-            else:
-                self.autoClick('get_ser_no','Original Serial number:','noprint')
+            self.autoClick('dfu_mode','','noprint')
+            self.printText('Your sample should be in DFU mode!')
+        else:
+            self.printText('Cannot identify your device!!')
+
+    def __dfuModeForUpdate(self):
+        if self.vendor_id == "0xabcd":
+            self.__usbHelper.sendReport('dfu_mode')
+            return True
+        elif self.vendor_id == "0x0cd4":
+            self.__usbHelper.sendReport('get_mode')
+            sleep(0.2)
+            get_mode=self.returnRecieved()
+            if get_mode == 'ON':
+                logging.log(logging.DEBUG, 'Your sample is on state, so shutting down...')
+                self.__usbHelper.sendReport('power_button_press')
+                sleep(8)
+            self.__usbHelper.sendReport('dfu_mode')
+            logging.log(logging.DEBUG, 'Your sample should be in DFU mode!')
+            return True
+        else:
+            logging.log(logging.DEBUG, 'Cannot identify your device!!')
+            return False
+
+    def psToolThread(self):
+        try:
+            _thread.start_new_thread(self.__psTool, () )
+        except Exception as e:
+           logging.log(logging.DEBUG, 'Error when start thread __psTool: {0}'.format(e))
+
+    def __psTool(self):
+        self.autoClick('get_mode','','noprint')
+        sleep(0.02)
+        get_mode = self.returnRecieved()
+        if get_mode == 'ON':
+            self.printText('Your sample is on state, so shutting down...')
+            self.autoClick('power_button_press','','noprint')
+            sleep(7)
+        self.printText('pstool_enable command has been sent!')
+        self.printText('Please check your sample state!')
+        sleep(1)
+        self.autoClick('pstool_enable','','noprint')
+        self.printText('Your sample should be in pstool mode!')
+
+    def changeSNThread(self):
+        try:
+            _thread.start_new_thread(self.__changeSN, () )
+        except Exception as e:
+           logging.log(logging.DEBUG, 'Error when start thread __changeSN: {0}'.format(e))
+
+    def __changeSN(self):
+        if self.textSN.get()=='':
+            self.printText('Please input serial number!')
+        else:
+            self.autoClick('get_ser_no','Original Serial number:','noprint')
+            sleep(0.02)
+            origin_ser_no=self.returnRecieved()
+            if origin_ser_no!='init':
+                self.printText('--------------------------------------------')
+                self.printText('Your original serial number is: %s'%origin_ser_no)
+
+                change_ser_no = self.textSN.get()
+                self.autoClick(("set_ser_no %s"%change_ser_no),'','noprint')
                 sleep(0.02)
-                origin_ser_no=self.returnRecieved()                    
-                if origin_ser_no!='init':
-                    self.printText('--------------------------------------------')  
-                    self.printText('Your original serial number is: %s'%origin_ser_no)
-                    
-                    change_ser_no = self.textSN.get()
-                    self.autoClick(("set_ser_no %s"%change_ser_no),'','noprint') 
-                    sleep(0.02)
-                    self.autoClick('get_ser_no','','noprint')
-                    sleep(0.02)
-                    
-                    changed_ser_no=self.returnRecieved()
-                    if changed_ser_no==change_ser_no:
-                        self.printText('Your serial number has been changed to: %s'%changed_ser_no)
-                    else:
-                        self.printText('Failed to change serial number!')
-                    
-                    self.autoClick(("set_ser_no %s"%origin_ser_no),'','noprint') 
-                    sleep(0.02)
-                    self.autoClick('get_ser_no','','noprint')
-                    sleep(0.02)
-                    
-                    get_ser_no=self.returnRecieved()
-                    if get_ser_no==origin_ser_no:
-                        self.printText('Your serial number has been changed back to: %s'%get_ser_no)
-                    else:
-                        self.printText('Failed to change back to original serial number!')
-                    #self.printText('So, your serial number can be changed successfully!')
-                    self.printText('--------------------------------------------')  
+                self.autoClick('get_ser_no','','noprint')
+                sleep(0.02)
+
+                changed_ser_no=self.returnRecieved()
+                if changed_ser_no==change_ser_no:
+                    self.printText('Your serial number has been changed to: %s'%changed_ser_no)
                 else:
-                    self.printText('Please click again!') 
-            self.changesn=False 
-        '''    
-        if self.runTemp==True:  
-            self.autoClick("get_batt_temp","Temperature: ",'print')
-            self.runTemp=False   
+                    self.printText('Failed to change serial number!')
+
+                self.autoClick(("set_ser_no %s"%origin_ser_no),'','noprint')
+                sleep(0.02)
+                self.autoClick('get_ser_no','','noprint')
+                sleep(0.02)
+
+                get_ser_no=self.returnRecieved()
+                if get_ser_no==origin_ser_no:
+                    self.printText('Your serial number has been changed back to: %s'%get_ser_no)
+                else:
+                    self.printText('Failed to change back to original serial number!')
+                #self.printText('So, your serial number can be changed successfully!')
+                self.printText('--------------------------------------------')
+            else:
+                self.printText('Please click again!')
         '''
+        if self.runTemp==True:
+            self.autoClick("get_batt_temp","Temperature: ",'print')
+            self.runTemp=False
+        '''
+
+    def autoUpdateThread(self):
+        logging.log(logging.DEBUG, "Run auto update")
+        try:
+            _thread.start_new_thread(self.__runAutoUpdate, () )
+        except Exception as e:
+           logging.log(logging.DEBUG, 'Error when start thread __runAutoUpdate: {0}'.format(e))
+
+    def __runAutoUpdate(self):
         if self.update == True:
             self.times = 0
             """
@@ -702,10 +907,6 @@ class MainFrame:
             for i in range(0,len(self.button)):
                 self.button[i].configure(state = DISABLED)
             """
-            if os.path.isfile(self.ini_filename) == False:
-                self.printText("Cannot find file config.ini")
-                self.update = False
-                return 
             conf = configparser.ConfigParser()
             try:
                 conf.read(self.ini_filename)
@@ -713,14 +914,14 @@ class MainFrame:
                 self.High_version_FW = conf.get("Firmware", "High_version_FW")
                 self.High_version_DSP = conf.get("Firmware", "High_version_DSP")
                 self.High_version_path = conf.get("Firmware", "High_version_path")
-                
+
                 self.Low_version_FW = conf.get("Firmware", "Low_version_FW")
                 self.Low_version_DSP = conf.get("Firmware", "Low_version_DSP")
                 self.Low_version_path = conf.get("Firmware", "Low_version_path")
                 self.totalTimes = conf.getint("Upate_Times", "times")
             except Exception as e:
-                self.printText("Error when read config.ini : "+e)
-                self.update = False                    
+                self.printText("Error when read HID_config.ini : "+e)
+                self.update = False
                 return
 
             while(self.times < self.totalTimes):
@@ -735,7 +936,7 @@ class MainFrame:
                         self.printText('-----------------------Downgrade to %s --- %s times'%(self.Low_version_FW, self.times))
                         if not self.__autoUpdate(self.Low_version_path, self.Low_version_DSP, self.Low_version_FW, self.usbPID):
                             self.update = False
-                            return                        
+                            return
                         self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.times))
                         if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID):
                             self.update = False
@@ -744,7 +945,7 @@ class MainFrame:
                     self.printText('Error when update: '+e)
                     self.update = False
                     return
-            
+
             #need add disable other button
             self.totalTimes = 0
             self.times = 0
@@ -753,15 +954,41 @@ class MainFrame:
             self.printText("*****Finished all update!**********")
             self.printText("***********************************")
 
+    def filterDigit(self, inStr):
+        outStr = ''
+        for s in inStr:
+            if s.isdigit():
+                outStr = outStr + s
+        return outStr
+
     def __versionCheck(self, version_DSP, version_FW):
-        sleep(6)
+        sleep(8)
+        logging.log(logging.DEBUG, "Start version check!")
         #self.__onVersionBtnClick('get_version')
-        self.autoClick('get_version','','print')
+        #self.autoClick('get_version','','print')
+        self.__usbHelper.sendReport('get_version')
         sleep(0.8)
         version = self.returnRecieved()
         sleep(0.3)
         if version != '':
             try:
+                currentVersion = self.filterDigit(version)
+                FW = self.filterDigit(version_FW)
+                DSP = self.filterDigit(version_DSP)
+                destVersion = FW + DSP
+                if currentVersion == destVersion:
+                    self.printText("Read version value = {0}".format(currentVersion))
+                    self.printText("Upgrade really succeeded!!")
+                    sleep(2)
+                    return True
+                else:
+                    logging.log(logging.DEBUG, "Read version value = {0}".format(currentVersion))
+                    logging.log(logging.DEBUG, "version_FW="+version_FW+"    version_DSP="+version_DSP)
+                    #self.printText("FW="+FW+" version_FW="+version_FW)
+                    #self.printText("DSP="+DSP+" version_DSP="+version_DSP)
+                    self.printText("Upgrade failed !!!!! ---- version numbers are not equal!")
+                    return False
+                """
                 FW = re.findall(r'FW=(.*),', version)[0]
                 DSP = re.findall(r'DSP=(.*)', version)[0]
                 if (FW == version_FW) and (DSP == version_DSP):
@@ -771,11 +998,12 @@ class MainFrame:
                     self.printText("FW="+FW+" version_FW="+version_FW)
                     self.printText("DSP="+DSP+" version_DSP="+version_DSP)
                     self.printText("Upgrade failed !!!!! ---- version numbers are not equal!")
+                    return False
+                """
             except Exception as e:
                 self.printText("Cannot connect with device")
                 self.printText("Error : "+e)
                 return False
-            return True
         else:
             self.printText("Cannot read version!!")
             self.printText("Update Failed!!!!!")
@@ -788,26 +1016,30 @@ class MainFrame:
             self.printText("Cannot find file %s or %s"%(dfu_file, dfu_cmd))
             self.printText("Please check your related files or path in config.ini!!!")
             return False
-        self.printText("Going to DFU mode ...")        
-        self.autoClick('dfu_mode','','noprint')
+        self.printText("Going to DFU mode ...")
+        if not self.__dfuModeForUpdate():
+            return False
+        #self.autoClick('dfu_mode','','noprint')
         sleep(7)
         self.printText("Updating ...")
-        cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\input.txt".format(dfu_cmd, self.vendor_id, usbPID, dfu_file)
+        cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\ui\data\input.ini".format(dfu_cmd, self.vendor_id, usbPID, dfu_file)
         try:
             s=subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
             pipe=s.stdout.readlines()
         except Exception as e:
-            self.printText("Error : "+e)
+            logging.log(logging.DEBUG, "Error : "+e)
             return False
-        sleep(1.5)  #add this to get enough time
+        logging.log(logging.DEBUG, "Wait for subprocess finish!")
+        sleep(6)  #add this to get enough time
+        if s.wait() != 0:
+            logging.log(logging.DEBUG, "Error on subprocess!!!")
+            return False
         if "Device reset succeeded\r\n" in  pipe[4].decode('utf-8'):
             self.printText("DFU_Update is finished, going to check version...")
         else:
             self.printText("Failed to upgrade!Going to exit...")
             return False
             #sys.exit(1)
-        if s.wait() != 0:
-            self.printText("Error on subprocess!!!")
         if not self.__versionCheck(version_DSP, version_FW):
             return False
         return True
