@@ -1,6 +1,6 @@
 
-from ui import MainFrame
-from usb import UsbHelper
+from src.ui import MainFrame
+from src.usb import UsbHelper
 import threading
 
 if __name__ == '__main__':

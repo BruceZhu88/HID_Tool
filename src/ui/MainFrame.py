@@ -1,4 +1,10 @@
 from time import *
+import threading
+import _thread
+import logging
+import os
+import subprocess
+import configparser
 
 from tkinter import messagebox
 from tkinter.filedialog import *
@@ -7,14 +13,9 @@ from tkinter.scrolledtext import *
 
 from .Settings import Settings
 from .checkUpdates import checkUpdates
-import threading
-import _thread
-import logging
-import os
-import subprocess
-import configparser
+from src.common.clearLogs import clearLogs
+from src.ui.appUpdate import appUpdate
 
-maxLogFiles = 150
 logPath = '.\\log'
 if not os.path.exists(logPath):
     os.mkdir(logPath)
@@ -27,14 +28,14 @@ logging.basicConfig(filename=logfilename,
 
 conf = configparser.ConfigParser()
 try:
-    conf.read('./ui/version.ini')
+    conf.read('./src/config/version.ini')
     appVerson = conf.get("version", "app")
 except Exception as e:
     logging.log(logging.DEBUG, 'Error: {0}'.format(e))
     sys.exit()
 
 class MainFrame:
-    def __init__(self,usbHelper):
+    def __init__(self, usbHelper):
 
         self.__tk = Tk()
         self.title = 'HID v{0} SQA'.format(appVerson)
@@ -101,10 +102,10 @@ class MainFrame:
 
         self.__settings.loadSettings()
 
-        self.thread_clearLog = threading.Timer(4, self.clearLog) #wait 4s to launch, avoid affect main thread(UI)
-        self.thread_clearLog.setDaemon(True)
-        self.thread_clearLog.start()
-        #self.clearLogThread()
+        #self.thread_clearLog = threading.Timer(4, self.clearLog) #wait 4s to launch, avoid affect main thread(UI)
+        #self.thread_clearLog.setDaemon(True)
+        #self.thread_clearLog.start()
+        _thread.start_new_thread(clearLogs(messagebox, logfilename).clearLog, ())
 
     def mainLoop(self):
         self.__setupContent()
@@ -149,9 +150,8 @@ class MainFrame:
         rootHeight = 600
         size = '%dx%d+%d+%d' % (rootWidth, rootHeight, (screenWidth - rootWidth)/2, (screenHeight - rootHeight)/2)
         self.__tk.geometry(size)
-        self.__tk.attributes('-topmost', 1)
-        #self.__tk.iconbitmap("%s\\it_medieval_blueftp_amain_48px.ico"%os.getcwd())
-        self.__tk.iconbitmap(".\\ui\\icon\\it_medieval_blueftp_amain_48px.ico")
+        #self.__tk.attributes('-topmost', 1) #this is for always on top position
+        self.__tk.iconbitmap(".\\src\\config\\icon\\it_medieval_blueftp_amain_48px.ico")
 
     def __setupContent(self):
         self.menu_bar = Frame(self.__tk, relief=RAISED, borderwidth=2)
@@ -204,67 +204,8 @@ class MainFrame:
         messagebox.showinfo('About', 'Versoin: {0}\nAuthor: Bruce Zhu\nEmail:  bruce.zhu@tymphany.com'.format(appVerson))
 
     def checkForUpdates(self):
-        conf = configparser.ConfigParser()
-        try:
-            conf.read('.\\ui\\version.ini')
-            currentVer = conf.get("version", "app")
-        except Exception as e:
-            logging.log(logging.DEBUG, 'Error: {0}'.format(e))
-            return
-        if not os.path.exists('.\\download'):
-            os.makedirs('.\\download')
-        dest_dir = '.\\download\\downVer.ini'
-        checkupdates = checkUpdates()
-        if not checkupdates.downLoadFromURL('http://sw.tymphany.com/fwupdate/sqa/tool/HID/version.ini', dest_dir):
-            messagebox.showinfo('Tips', 'Cannot communicate with new version server!\nPlease check your network!')
-            return
-        downVer = checkupdates.getVer(dest_dir)
-        logging.log(logging.DEBUG, 'Starting compare version')
-        if checkupdates.compareVer(downVer, currentVer):
-            ask = messagebox.askokcancel('Tips', 'New version %s is detected !\n Do you want to update now?'%downVer)
-            if ask:
-                self.downloadThread(downVer)
-                logging.log(logging.DEBUG, 'Starting download')
-        else:
-            messagebox.showinfo('Tips', 'No new version!')
-
-    def downloadThread(self, downVer):
-        try:
-            _thread.start_new_thread(self.downloadZip, (downVer,) )
-        except:
-            logging.log(logging.DEBUG, 'Cannot start power cycle thread!!!')
-
-    def downloadZip(self, downVer):
-        newVerPath = '.\\download\\HID.zip'
-        installFile = '.\\download\\install.bat'
-        checkupdates = checkUpdates()
-        if not checkupdates.downLoadFromURL('http://sw.tymphany.com/fwupdate/sqa/tool/HID/HID_Tool_v{0}.zip'.format(downVer), newVerPath):
-            messagebox.showinfo('Tips', 'Cannot communicate with new version server!\nPlease check your network!')
-            return
-        if not checkupdates.downLoadFromURL('http://sw.tymphany.com/fwupdate/sqa/tool/HID/install.bat', installFile):
-            messagebox.showinfo('Tips', 'Cannot communicate with new version server!\nPlease check your network!')
-            return
-        #download process
-        checkupdates.unzip_dir(newVerPath, '.\\download\\HID')
-        ask = messagebox.askokcancel('Tips', 'Do you want to install this new version?')
-        if ask:
-            logging.log(logging.DEBUG, "Starting install")
-            self.installThread()
-            logging.log(logging.DEBUG, "Close UI")
-            self.__tk.destroy()
-            logging.log(logging.DEBUG, "System exit")
-            sys.exit()
-
-    def installThread(self):
-        batPath = r'"%s\\download\\install.bat"'%os.getcwd() #Note: path must be '"D:\Program Files"' to avoid include space in path
-        logging.log(logging.DEBUG, "Run %s"%batPath)
-        try:
-            _thread.start_new_thread(self.execBat, (batPath,) )
-        except Exception as e:
-           logging.log(logging.DEBUG, 'Error when install: {0}'.format(e))
-
-    def execBat(self, path):
-        os.system(path)
+        checkUpdate = appUpdate(self.__tk, messagebox)
+        checkUpdate.checkForUpdates()
 
     def __setupLeftPane(self, master):
 #        topPane = Frame(master, bg = ui.mainColor)
@@ -376,42 +317,6 @@ class MainFrame:
         entryCommand.bind('<Up>', self.__onLastCacheCommand)
         entryCommand.bind('<Down>', self.__onNextCacheCommand)
         entryCommand.pack(fill = BOTH, expand = YES)
-
-    #************************************************************************************************************
-    def walkFolders(self, folder):
-        folderscount=0
-        filescount=0
-        size=0
-        #walk(top,topdown=True,onerror=None)
-        for root,dirs,files in os.walk(folder):
-            folderscount+=len(dirs)
-            filescount+=len(files)
-            size+=sum([os.path.getsize(os.path.join(root,name)) for name in files])
-        return folderscount,filescount,size
-
-    def clearLogThread(self):
-        try:
-            _thread.start_new_thread(self.clearLog, () )
-        except:
-           logging.log(logging.DEBUG, "Cannot start clearLog thread!!!")
-
-    def clearLog(self):
-        if os.path.exists(logPath):
-            folderscount,filescount,size = self.walkFolders(logPath)
-            if filescount > maxLogFiles:
-                ask = messagebox.askokcancel('Tips', 'Your log files have been exceeded {0}!\nDo you want to clear?'.format(maxLogFiles))
-                if ask:
-                    for parent,dirnames,filenames in os.walk(logPath):
-                        for filename in filenames:
-                            if filename not in logfilename:
-                                try:
-                                    delFilePath = os.path.join(parent,filename)
-                                    os.remove(delFilePath)
-                                except Exception as e:
-                                    logging.log(logging.DEBUG, "Delete file {0} failed: {1}".format(delFilePath, e))
-        else:
-            logging.log(logging.DEBUG, "Object directory {0} does not exist!!".format(logPath))
-    #************************************************************************************************************
 
     def __onRefreshBtnClick(self):
         self.__usbHelper.scan()
@@ -800,7 +705,9 @@ class MainFrame:
             self.autoClick('dfu_mode','','noprint')
             self.printText('Your sample should be in DFU mode!')
         else:
-            self.printText('Cannot identify your device!!')
+            self.printText('Default dfu mode operation!!')
+            self.autoClick('dfu_mode','','print')
+            self.printText("dfu_mode command has been sent!")
 
     def __dfuModeForUpdate(self):
         if self.vendor_id == "0xabcd":
@@ -818,8 +725,9 @@ class MainFrame:
             logging.log(logging.DEBUG, 'Your sample should be in DFU mode!')
             return True
         else:
-            logging.log(logging.DEBUG, 'Cannot identify your device!!')
-            return False
+            logging.log(logging.DEBUG, 'Default dfu mode operation!!')
+            self.__usbHelper.sendReport('dfu_mode')
+            return True
 
     def psToolThread(self):
         try:
@@ -910,7 +818,7 @@ class MainFrame:
             conf = configparser.ConfigParser()
             try:
                 conf.read(self.ini_filename)
-                self.usbPID = conf.get("USBPID", "usbPID")
+                #self.usbPID = conf.get("USBPID", "usbPID")
                 self.High_version_FW = conf.get("Firmware", "High_version_FW")
                 self.High_version_DSP = conf.get("Firmware", "High_version_DSP")
                 self.High_version_path = conf.get("Firmware", "High_version_path")
@@ -929,16 +837,16 @@ class MainFrame:
                 try:
                     if self.High_version_FW == self.Low_version_FW:
                         self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.times))
-                        if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID):
+                        if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW):
                             self.update = False
                             return
                     else:
                         self.printText('-----------------------Downgrade to %s --- %s times'%(self.Low_version_FW, self.times))
-                        if not self.__autoUpdate(self.Low_version_path, self.Low_version_DSP, self.Low_version_FW, self.usbPID):
+                        if not self.__autoUpdate(self.Low_version_path, self.Low_version_DSP, self.Low_version_FW):
                             self.update = False
                             return
                         self.printText('-----------------------Update to %s --- %s times'%(self.High_version_FW, self.times))
-                        if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW, self.usbPID):
+                        if not self.__autoUpdate(self.High_version_path, self.High_version_DSP, self.High_version_FW):
                             self.update = False
                             return
                 except Exception as e:
@@ -1009,7 +917,17 @@ class MainFrame:
             self.printText("Update Failed!!!!!")
             return False
 
-    def __autoUpdate(self, firmware_path, version_DSP, version_FW, usbPID):
+    def __autoUpdate(self, firmware_path, version_DSP, version_FW):
+        try:
+            with open(firmware_path+"/set_evn.bat", "r+") as fo:
+                for line in fo:
+                    if "USBPID" in line:
+                        self.usbPID = "0x" + re.findall(r'0x(.*)"', line)[0]
+                        break
+        except Exception as e:
+            logging.log(logging.DEBUG, e)
+            return False
+
         dfu_file = firmware_path+'\\firmware.dfu'
         dfu_cmd = firmware_path+'\HidDfuCmd.exe'
         if os.path.isfile(dfu_file) == False or os.path.isfile(dfu_cmd) == False:
@@ -1022,7 +940,7 @@ class MainFrame:
         #self.autoClick('dfu_mode','','noprint')
         sleep(7)
         self.printText("Updating ...")
-        cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\ui\data\input.ini".format(dfu_cmd, self.vendor_id, usbPID, dfu_file)
+        cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\src\config\data\input.ini".format(dfu_cmd, self.vendor_id, self.usbPID, dfu_file)
         try:
             s=subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
             pipe=s.stdout.readlines()

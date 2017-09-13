@@ -1,5 +1,6 @@
 rd /s /Q .\ui\
 rd /s /Q .\usb\
+rd /s /Q .\src\
 xcopy .\download\HID\* .\ /s /h /y
 ::set current_dir=..\
 ::pushd %current_dir% 

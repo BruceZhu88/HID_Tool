@@ -6,7 +6,7 @@
 # Author:      Bruce Zhu
 #
 # Created:     23/08/2017
-# Copyright:   (c) it 2017
+# Copyright:   (c) SQA 2017
 # Licence:     <your licence>
 #-------------------------------------------------------------------------------
 import os

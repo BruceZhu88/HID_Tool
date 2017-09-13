@@ -1,3 +1,5 @@
+import configparser
+import logging
 from .pywinusb import hid
 
 class PnpHelper(hid.HidPnPWindowMixin):
@@ -21,6 +23,15 @@ class UsbHelper:
         self.__reportRecievedHandler = None
         self.__pnpHelper = None
 
+        conf = configparser.ConfigParser()
+        try:
+            conf.read('./src/config/VID.ini')
+            getVid = conf.get("Vendor_ID", "VID")
+            self.vid = getVid.split(",")
+        except Exception as e:
+            logging.log(logging.DEBUG, 'Error: {0}'.format(e))
+            sys.exit()
+
     def registerDeviceListChangeHandler(self, handler):
         self.__deviceListChangeHandler = handler
 
@@ -35,9 +46,10 @@ class UsbHelper:
 
     def scan(self):
         self.activateDevice(-1)
-        self.__devices = hid.HidDeviceFilter(vendor_id = 0x0cd4).get_devices()
-        if len(self.__devices) == 0:
-            self.__devices = hid.HidDeviceFilter(vendor_id = 0xabcd).get_devices()
+        for v_id in self.vid:
+            self.__devices = hid.HidDeviceFilter(vendor_id = eval(v_id)).get_devices()
+            if len(self.__devices) != 0:
+                break
 #        print('scan HID device')
 #        print(self.__devices)
 
@@ -88,10 +100,11 @@ class UsbHelper:
             try:
                 self.__activeReport = device.find_output_reports()[0]
                 self.__activeDeviceInstanceId = device.instance_id
-            except:
+            except Exception as e:
+                logging.log(logging.DEBUG, "Warning(Dfu mode): {}".format(e))
                 return False
-                #print('You are in duf mode')
-                
+                #print('You are in dfu mode')
+
         if self.__activeDeviceChangeHandler is not None:
             self.__activeDeviceChangeHandler()
         return True
@@ -135,7 +148,7 @@ class UsbHelper:
         while data[i] != 0:
             i = i + 1
         report = bytes(data[1:i]).decode()
-        
+
         if self.__reportRecievedHandler is not None:
             self.__reportRecievedHandler(report)
-    
+

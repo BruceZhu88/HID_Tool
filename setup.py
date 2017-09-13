@@ -9,7 +9,7 @@ from cx_Freeze import setup, Executable
 
 conf = configparser.ConfigParser()
 try:
-    conf.read('./ui/version.ini')
+    conf.read('./src/config/version.ini')
     appVerson = conf.get("version", "app")
 except Exception as e:
     print(e)
@@ -26,7 +26,7 @@ if sys.platform == 'win32':
     base = 'Win32GUI'
 
 executables = [
-    Executable('HID.py', base=base, icon='./ui/icon/it_medieval_blueftp_amain_48px.ico')
+    Executable('HID.py', base=base, icon='./src/config/icon/it_medieval_blueftp_amain_48px.ico')
 ]
 
 setup(name='HID_Tool',
