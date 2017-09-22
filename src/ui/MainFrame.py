@@ -821,11 +821,11 @@ class MainFrame:
                 #self.usbPID = conf.get("USBPID", "usbPID")
                 self.High_version_FW = conf.get("Firmware", "High_version_FW")
                 self.High_version_DSP = conf.get("Firmware", "High_version_DSP")
-                self.High_version_path = conf.get("Firmware", "High_version_path")
+                self.High_version_path = '{}'.format(conf.get("Firmware", "High_version_path"))
 
                 self.Low_version_FW = conf.get("Firmware", "Low_version_FW")
                 self.Low_version_DSP = conf.get("Firmware", "Low_version_DSP")
-                self.Low_version_path = conf.get("Firmware", "Low_version_path")
+                self.Low_version_path = '{}'.format(conf.get("Firmware", "Low_version_path"))
                 self.totalTimes = conf.getint("Upate_Times", "times")
             except Exception as e:
                 self.printText("Error when read HID_config.ini : "+e)
@@ -919,7 +919,7 @@ class MainFrame:
 
     def __autoUpdate(self, firmware_path, version_DSP, version_FW):
         try:
-            with open(firmware_path+"/set_evn.bat", "r+") as fo:
+            with open(firmware_path+"\\set_evn.bat", "r+") as fo:
                 for line in fo:
                     if "USBPID" in line:
                         self.usbPID = "0x" + re.findall(r'0x(.*)"', line)[0]
@@ -930,8 +930,9 @@ class MainFrame:
 
         dfu_file = firmware_path+'\\firmware.dfu'
         dfu_cmd = firmware_path+'\HidDfuCmd.exe'
-        if os.path.isfile(dfu_file) == False or os.path.isfile(dfu_cmd) == False:
-            self.printText("Cannot find file %s or %s"%(dfu_file, dfu_cmd))
+        DFU_Update = firmware_path+'\DFU_Update.bat'
+        if (os.path.isfile(dfu_file) == False) or (os.path.isfile(dfu_cmd) == False) or (os.path.isfile(DFU_Update) == False):
+            self.printText("Cannot find file %s or %s or %s"%(dfu_file, dfu_cmd, DFU_Update))
             self.printText("Please check your related files or path in config.ini!!!")
             return False
         self.printText("Going to DFU mode ...")
@@ -940,7 +941,13 @@ class MainFrame:
         #self.autoClick('dfu_mode','','noprint')
         sleep(7)
         self.printText("Updating ...")
-        cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\src\config\data\input.ini".format(dfu_cmd, self.vendor_id, self.usbPID, dfu_file)
+        rootPath = os.getcwd()
+        input = '"{}\src\config\data\input.ini"'.format(rootPath)
+        os.chdir(firmware_path)
+        #os.system(r'DFU_Update.bat < {}'.format(input))
+        #cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\src\config\data\input.ini".format(dfu_cmd, self.vendor_id, self.usbPID, dfu_file)
+        cmd = r'echo y|DFU_Update.bat'
+        logging.log(logging.DEBUG, cmd)
         try:
             s=subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
             pipe=s.stdout.readlines()
@@ -952,12 +959,14 @@ class MainFrame:
         if s.wait() != 0:
             logging.log(logging.DEBUG, "Error on subprocess!!!")
             return False
-        if "Device reset succeeded\r\n" in  pipe[4].decode('utf-8'):
+        logging.log(logging.DEBUG, '{}'.format(pipe[-2].decode('utf-8')))
+        if "Device reset succeeded\r\n" in  pipe[-2].decode('utf-8'):
             self.printText("DFU_Update is finished, going to check version...")
         else:
             self.printText("Failed to upgrade!Going to exit...")
             return False
             #sys.exit(1)
+        os.chdir(rootPath)
         if not self.__versionCheck(version_DSP, version_FW):
             return False
         return True
