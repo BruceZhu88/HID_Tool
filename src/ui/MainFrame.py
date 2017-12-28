@@ -1,18 +1,17 @@
-from time import *
-import threading
+
+# import threading
 import _thread
 import logging
 import os
 import subprocess
 import configparser
-
+from time import *
 from tkinter import messagebox
 from tkinter.filedialog import *
 from tkinter.font import *
 from tkinter.scrolledtext import *
 
 from .Settings import Settings
-from .checkUpdates import checkUpdates
 from src.common.clearLogs import clearLogs
 from src.ui.appUpdate import appUpdate
 
@@ -22,9 +21,9 @@ if not os.path.exists(logPath):
 currentTime = strftime("%Y%m%d%H%M")
 logfilename = '{0}/{1}.log'.format(logPath, currentTime)
 logging.basicConfig(filename=logfilename,
-            format='%(asctime)s -%(name)s-%(levelname)s-%(module)s:%(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S %p',
-            level=logging.DEBUG)
+                    format='%(asctime)s -%(name)s-%(levelname)s-%(module)s:%(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S %p',
+                    level=logging.DEBUG)
 
 conf = configparser.ConfigParser()
 try:
@@ -33,6 +32,7 @@ try:
 except Exception as e:
     logging.log(logging.DEBUG, 'Error: {0}'.format(e))
     sys.exit()
+
 
 class MainFrame:
     def __init__(self, usbHelper):
@@ -910,7 +910,7 @@ class MainFrame:
                 """
             except Exception as e:
                 self.printText("Cannot connect with device")
-                self.printText("Error : "+e)
+                self.printText("Error : " + e)
                 return False
         else:
             self.printText("Cannot read version!!")
@@ -918,6 +918,7 @@ class MainFrame:
             return False
 
     def __autoUpdate(self, firmware_path, version_DSP, version_FW):
+        '''
         try:
             with open(firmware_path+"\\set_evn.bat", "r+") as fo:
                 for line in fo:
@@ -927,46 +928,51 @@ class MainFrame:
         except Exception as e:
             logging.log(logging.DEBUG, e)
             return False
-
-        dfu_file = firmware_path+'\\firmware.dfu'
-        dfu_cmd = firmware_path+'\HidDfuCmd.exe'
-        DFU_Update = firmware_path+'\DFU_Update.bat'
+        '''
+        dfu_file = firmware_path + '\\firmware.dfu'
+        dfu_cmd = firmware_path + '\HidDfuCmd.exe'
+        DFU_Update = firmware_path + '\DFU_Update.bat'
         if (os.path.isfile(dfu_file) == False) or (os.path.isfile(dfu_cmd) == False) or (os.path.isfile(DFU_Update) == False):
-            self.printText("Cannot find file %s or %s or %s"%(dfu_file, dfu_cmd, DFU_Update))
-            self.printText("Please check your related files or path in config.ini!!!")
+            self.printText("Cannot find file %s or %s or %s" %
+                           (dfu_file, dfu_cmd, DFU_Update))
+            self.printText(
+                "Please check your related files or path in config.ini!!!")
             return False
+
         self.printText("Going to DFU mode ...")
         if not self.__dfuModeForUpdate():
             return False
-        #self.autoClick('dfu_mode','','noprint')
+        # self.autoClick('dfu_mode','','noprint')
         sleep(7)
         self.printText("Updating ...")
         rootPath = os.getcwd()
-        input = '"{}\src\config\data\input.ini"'.format(rootPath)
+        # input = '"{}\src\config\data\input.ini"'.format(rootPath)
         os.chdir(firmware_path)
-        #os.system(r'DFU_Update.bat < {}'.format(input))
-        #cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\src\config\data\input.ini".format(dfu_cmd, self.vendor_id, self.usbPID, dfu_file)
+        # os.system(r'DFU_Update.bat < {}'.format(input))
+        # cmd = r"{0} upgrade {1} {2} 0 0 {3} < .\src\config\data\input.ini"
+        # .format(dfu_cmd, self.vendor_id, self.usbPID, dfu_file)
         cmd = r'echo y|DFU_Update.bat'
         logging.log(logging.DEBUG, cmd)
         try:
-            s=subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-            pipe=s.stdout.readlines()
+            s = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+            pipe = s.stdout.readlines()
         except Exception as e:
-            logging.log(logging.DEBUG, "Error : "+e)
+            logging.log(logging.DEBUG, "Error : " + e)
             return False
+        finally:
+            os.chdir(rootPath)
         logging.log(logging.DEBUG, "Wait for subprocess finish!")
-        sleep(6)  #add this to get enough time
+        sleep(6)  # add this to get enough time
         if s.wait() != 0:
             logging.log(logging.DEBUG, "Error on subprocess!!!")
             return False
         logging.log(logging.DEBUG, '{}'.format(pipe[-2].decode('utf-8')))
-        if "Device reset succeeded\r\n" in  pipe[-2].decode('utf-8'):
+        if "Device reset succeeded\r\n" in pipe[-2].decode('utf-8'):
             self.printText("DFU_Update is finished, going to check version...")
         else:
             self.printText("Failed to upgrade!Going to exit...")
             return False
-            #sys.exit(1)
-        os.chdir(rootPath)
+            # sys.exit(1)
         if not self.__versionCheck(version_DSP, version_FW):
             return False
         return True
